@@ -28,14 +28,14 @@
 #include "sysemu/reset.h"
 #include "net/net.h"
 #include "elf.h"
-#include "hw/misc/esp32c3_reg.h"
+#include "hw/misc/esp32c6_reg.h"
 #include "hw/misc/esp32c3_rtc_cntl.h"
 #include "hw/misc/esp32c3_cache.h"
 #include "hw/char/esp32c3_uart.h"
 #include "hw/gpio/esp32c3_gpio.h"
 #include "hw/nvram/esp32c3_efuse.h"
 #include "hw/riscv/esp32c3_clk.h"
-#include "hw/riscv/esp32c3_intmatrix.h"
+#include "hw/riscv/esp32c6_intmatrix.h"
 #include "hw/misc/esp32c3_sha.h"
 #include "hw/timer/esp32c3_timg.h"
 #include "hw/timer/esp32c3_systimer.h"
@@ -50,7 +50,7 @@
 #include "hw/dma/esp32c3_gdma.h"
 #include "hw/display/esp_rgb.h"
 
-#define ESP32C3_IO_WARNING          0
+#define ESP32C6_IO_WARNING          0
 
 #define ESP32C6_RESET_ADDRESS       0x40000000
 #define ESP32C6_RESET_GPIO_NAME     "esp32c6.machine.reset_gpio"
@@ -70,7 +70,7 @@ struct Esp32C6MachineState {
 
     DeviceState *eth; /* Ethernet controller */
     ESP32C3IntMatrixState intmatrix;
-    ESP32C3UARTState uart[ESP32C3_UART_COUNT];
+    ESP32C3UARTState uart[ESP32C6_UART_COUNT];
     ESP32C3GPIOState gpio;
     ESP32C3CacheState cache;
     ESP32C3EfuseState efuse;
@@ -99,22 +99,20 @@ struct Esp32C6MachineState {
 #define A_ASSIST_DEBUG_CORE_0_DEBUG_MODE_REG    0x098
 
 /* Create a macro which defines the name of our new machine class */
-#define TYPE_ESP32C3_MACHINE MACHINE_TYPE_NAME("esp32c3")
+#define TYPE_ESP32C6_MACHINE MACHINE_TYPE_NAME("esp32c6")
 
 /* This will create a macro ESP32_MACHINE, which can be used to check and cast a generic MachineClass
  * to the specific class we defined above: Esp32C6MachineState. */
-OBJECT_DECLARE_SIMPLE_TYPE(Esp32C6MachineState, ESP32C3_MACHINE)
+OBJECT_DECLARE_SIMPLE_TYPE(Esp32C6MachineState, ESP32C6_MACHINE)
 
-/* Memory entries for ESP32-C3 */
+/* Memory entries for ESP32-C6 */
 enum MemoryRegions {
-    ESP32C3_MEMREGION_IROM,
-    ESP32C3_MEMREGION_DROM,
-    ESP32C3_MEMREGION_DRAM,
-    ESP32C3_MEMREGION_IRAM,
-    ESP32C3_MEMREGION_RTCFAST,
-    ESP32C3_MEMREGION_DCACHE,
-    ESP32C3_MEMREGION_ICACHE,
-    ESP32C3_MEMREGION_FRAMEBUF,
+    ESP32C6_MEMREGION_ROM,
+    ESP32C6_MEMREGION_HP_SRAM,
+    ESP32C6_MEMREGION_EXTMEM,
+    ESP32C6_MEMREGION_LP_SRAM,
+    ESP32C6_MEMREGION_PERIPHERALS,
+    ESP32C6_MEMREGION_FRAMEBUF,
 };
 
 #define ESP32C3_INTERNAL_SRAM0_SIZE (16*1024)
@@ -122,17 +120,14 @@ enum MemoryRegions {
 static const struct MemmapEntry {
     hwaddr base;
     hwaddr size;
-} esp32c3_memmap[] = {
-    [ESP32C3_MEMREGION_IROM]    = { 0x40000000,  0x60000 },
-    [ESP32C3_MEMREGION_DROM]    = { 0x3ff00000,  0x20000 },
-    [ESP32C3_MEMREGION_DRAM]    = { 0x3fc80000,  0x60000 },
-    /* Merge SRAM0 and SRAM1 into a single entry */
-    [ESP32C3_MEMREGION_IRAM]    = { 0x4037c000,  0x60000 + ESP32C3_INTERNAL_SRAM0_SIZE },
-    [ESP32C3_MEMREGION_RTCFAST] = { 0x50000000,   0x2000 },
-    [ESP32C3_MEMREGION_DCACHE]  = { 0x3c000000, 0x800000 },
-    [ESP32C3_MEMREGION_ICACHE]  = { 0x42000000, 0x800000 },
+} esp32c6_memmap[] = {
+    [ESP32C6_MEMREGION_ROM]    = { 0x40000000,  0x50000 },
+    [ESP32C6_MEMREGION_HP_SRAM] = {0x40800000, 0x80000 },
+    [ESP32C6_MEMREGION_EXTMEM] = { 0x42000000, 0x1000000 },
+    [ESP32C6_MEMREGION_LP_SRAM] = { 0x50000000, 0x4000 },
+    [ESP32C6_MEMREGION_PERIPHERALS] = { ESP32C6_IO_START_ADDR, 0xD0000 },
     /* Virtual Framebuffer, used for the graphical interface */
-    [ESP32C3_MEMREGION_FRAMEBUF] = { 0x20000000, ESP_RGB_MAX_VRAM_SIZE }
+    [ESP32C6_MEMREGION_FRAMEBUF] = { 0x20000000, ESP_RGB_MAX_VRAM_SIZE }
 };
 
 
@@ -141,14 +136,15 @@ static bool addr_in_range(hwaddr addr, hwaddr start, hwaddr end)
     return addr >= start && addr < end;
 }
 
-static uint64_t esp32c3_io_read(void *opaque, hwaddr addr, unsigned int size)
+static uint64_t esp32c6_io_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    if (addr_in_range(addr + ESP32C3_IO_START_ADDR, DR_REG_RTC_I2C_BASE, DR_REG_RTC_I2C_BASE + 0x100)) {
+    #define DR_REG_RTC_I2C_BASE 0x6000e000 // From esp32c3_reg.h
+    if (addr_in_range(addr + ESP32C6_IO_START_ADDR, DR_REG_RTC_I2C_BASE, DR_REG_RTC_I2C_BASE + 0x100)) {
         return (uint32_t) 0xffffff;
-    } else if (addr + ESP32C3_IO_START_ADDR == DR_REG_SYSCON_BASE + A_SYSCON_ORIGIN_REG) {
+    } else if (addr + ESP32C6_IO_START_ADDR == DR_REG_HP_APM_BASE + A_SYSCON_ORIGIN_REG) {
         /* Return "QEMU" as a 32-bit value */
         return 0x51454d55;
-    } else if (addr + ESP32C3_IO_START_ADDR == DR_REG_SYSCON_BASE + A_SYSCON_RND_DATA_REG) {
+    } else if (addr + ESP32C6_IO_START_ADDR == DR_REG_HP_APM_BASE + A_SYSCON_RND_DATA_REG) {
         /* Return a random 32-bit value */
         static bool init = false;
         if (!init) {
@@ -156,28 +152,28 @@ static uint64_t esp32c3_io_read(void *opaque, hwaddr addr, unsigned int size)
             init = true;
         }
         return rand();
-    } else if (addr + ESP32C3_IO_START_ADDR == DR_REG_ASSIST_DEBUG_BASE + A_ASSIST_DEBUG_CORE_0_DEBUG_MODE_REG) {
+    } else if (addr + ESP32C6_IO_START_ADDR == DR_REG_ASSIST_DEBUG_BASE + A_ASSIST_DEBUG_CORE_0_DEBUG_MODE_REG) {
         return 0;
     } else {
-#if ESP32C3_IO_WARNING
-        warn_report("[ESP32-C3] Unsupported read to $%08lx\n", ESP32C3_IO_START_ADDR + addr);
+#if ESP32C6_IO_WARNING
+        warn_report("[ESP32-C6] Unsupported read to $%08lx\n", ESP32C6_IO_START_ADDR + addr);
 #endif
     }
     return 0;
 }
 
-static void esp32c3_io_write(void *opaque, hwaddr addr, uint64_t value, unsigned int size)
+static void esp32c6_io_write(void *opaque, hwaddr addr, uint64_t value, unsigned int size)
 {
-#if ESP32C3_IO_WARNING
-        warn_report("[ESP32-C3] Unsupported write $%08lx = %08lx\n", ESP32C3_IO_START_ADDR + addr, value);
+#if ESP32C6_IO_WARNING
+        warn_report("[ESP32-C6] Unsupported write $%08lx = %08lx\n", ESP32C6_IO_START_ADDR + addr, value);
 #endif
 }
 
 
 /* Define operations for I/OS */
-static const MemoryRegionOps esp32c3_io_ops = {
-    .read =  esp32c3_io_read,
-    .write = esp32c3_io_write,
+static const MemoryRegionOps esp32c6_io_ops = {
+    .read =  esp32c6_io_read,
+    .write = esp32c6_io_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
@@ -185,7 +181,7 @@ static const MemoryRegionOps esp32c3_io_ops = {
 /**
  * @brief Callback invoked when SoC's ESP32C6_RESET_GPIO_NAME pin is toggled
  */
-static void esp32c3_reset_request(void* opaque, int n, int level)
+static void esp32c6_reset_request(void* opaque, int n, int level)
 {
     if (level) {
         ShutdownCause cause = SHUTDOWN_CAUSE_GUEST_RESET;
@@ -194,7 +190,7 @@ static void esp32c3_reset_request(void* opaque, int n, int level)
 }
 
 
-static void esp32c3_init_spi_flash(Esp32C6MachineState *ms, BlockBackend* blk)
+static void esp32c6_init_spi_flash(Esp32C6MachineState *ms, BlockBackend* blk)
 {
     DeviceState *spi_master = DEVICE(&ms->spi1);
     BusState* spi_bus = qdev_get_child_bus(spi_master, "spi");
@@ -231,7 +227,7 @@ static void esp32c3_init_spi_flash(Esp32C6MachineState *ms, BlockBackend* blk)
 }
 
 
-static void esp32c3_init_openeth(Esp32C6MachineState *ms)
+static void esp32c6_init_openeth(Esp32C6MachineState *ms)
 {
     MemoryRegion* mr = NULL;
     SysBusDevice* sbd = NULL;
@@ -262,9 +258,9 @@ static void esp32c3_init_openeth(Esp32C6MachineState *ms)
 }
 
 
-static void esp32c3_load_firmware(MachineState *machine)
+static void esp32c6_load_firmware(MachineState *machine)
 {
-    Esp32C6MachineState *ms = ESP32C3_MACHINE(machine);
+    Esp32C6MachineState *ms = ESP32C6_MACHINE(machine);
     const char *bios_filename = NULL;
 
     if (machine->firmware) {
@@ -303,7 +299,7 @@ static void esp32c3_load_firmware(MachineState *machine)
         }
     } else {
         /* Open and load the "bios", which is the ROM binary, also named "first stage bootloader" */
-        char *rom_binary = qemu_find_file(QEMU_FILE_TYPE_BIOS, "esp32c3-rom.bin");
+        char *rom_binary = qemu_find_file(QEMU_FILE_TYPE_BIOS, "esp32c6-rom.bin");
         if (rom_binary == NULL) {
             error_report("Error: -bios argument not set, and ROM code binary not found (1)");
             exit(1);
@@ -321,7 +317,7 @@ static void esp32c3_load_firmware(MachineState *machine)
 }
 
 
-static void esp32c3_machine_init(MachineState *machine)
+static void esp32c6_machine_init(MachineState *machine)
 {
     /* First thing to do is to check if a drive format and a file ahve been passed through the command line.
      * In fact, we will emulate the SPI flash if `if=mtd` was given. To know this, we will need to use the
@@ -337,74 +333,66 @@ static void esp32c3_machine_init(MachineState *machine)
     }
 
     /* Re-use the macro that checks and casts any generic/parent class to the real child instance */
-    Esp32C6MachineState *ms = ESP32C3_MACHINE(machine);
+    Esp32C6MachineState *ms = ESP32C6_MACHINE(machine);
 
     /* Initialize SoC */
     object_initialize_child(OBJECT(ms), "soc", &ms->soc, TYPE_ESP_RISCV_CPU);
     qdev_prop_set_uint64(DEVICE(&ms->soc), "resetvec", ESP32C6_RESET_ADDRESS);
 
     /* Initialize the memory mapping */
-    const struct MemmapEntry *memmap = esp32c3_memmap;
+    const struct MemmapEntry *memmap = esp32c6_memmap;
     MemoryRegion *sys_mem = get_system_memory();
 
-    /* Initialize the IROM */
-    MemoryRegion *irom = g_new(MemoryRegion, 1);
-    memory_region_init_rom(irom, NULL, "esp32c3.irom", memmap[ESP32C3_MEMREGION_IROM].size, &error_fatal);
-    memory_region_add_subregion(sys_mem, memmap[ESP32C3_MEMREGION_IROM].base, irom);
+    /* Initialize the ROM */
+    MemoryRegion *rom = g_new(MemoryRegion, 1);
+    memory_region_init_rom(rom, NULL, "esp32c6.rom", memmap[ESP32C6_MEMREGION_ROM].size, &error_fatal);
+    memory_region_add_subregion(sys_mem, memmap[ESP32C6_MEMREGION_ROM].base, rom);
 
-    /* Initialize the DROM as an alias to IROM. */
-    MemoryRegion *drom = g_new(MemoryRegion, 1);
-    const hwaddr offset_in_orig = 0x40000;
-    memory_region_init_alias(drom, NULL, "esp32c3.drom", irom, offset_in_orig, memmap[ESP32C3_MEMREGION_DROM].size);
-    memory_region_add_subregion(sys_mem, memmap[ESP32C3_MEMREGION_DROM].base, drom);
+    /* Initialize the HP_SRAM */
+    MemoryRegion *hp_sram = g_new(MemoryRegion, 1);
+    memory_region_init_ram(hp_sram, NULL, "esp32c6.hp_sram", memmap[ESP32C6_MEMREGION_HP_SRAM].size, &error_fatal);
+    memory_region_add_subregion(sys_mem, memmap[ESP32C6_MEMREGION_HP_SRAM].base, hp_sram);
 
-    /* Initialize the IRAM */
-    MemoryRegion *iram = g_new(MemoryRegion, 1);
-    memory_region_init_ram(iram, NULL, "esp32c3.iram", memmap[ESP32C3_MEMREGION_IRAM].size, &error_fatal);
-    memory_region_add_subregion(sys_mem, memmap[ESP32C3_MEMREGION_IRAM].base, iram);
+    /* Initialize the EXTMEM */
+    MemoryRegion *extmem = g_new(MemoryRegion, 1);
+    memory_region_init_ram(extmem, NULL, "esp32c6.extmem", memmap[ESP32C6_MEMREGION_EXTMEM].size, &error_fatal);
+    memory_region_add_subregion(sys_mem, memmap[ESP32C6_MEMREGION_EXTMEM].base, extmem);
 
-    /* Initialize DRAM as an alias to IRAM (not including Internal SRAM 0) */
-    MemoryRegion *dram = g_new(MemoryRegion, 1);
-    /* DRAM mirrors IRAM for SRAM 1, skip the SRAM 0 area */
-    memory_region_init_alias(dram, NULL, "esp32c3.dram", iram,
-                             ESP32C3_INTERNAL_SRAM0_SIZE, memmap[ESP32C3_MEMREGION_DRAM].size);
-    memory_region_add_subregion(sys_mem, memmap[ESP32C3_MEMREGION_DRAM].base, dram);
+    /* Initialize the LP_SRAM */
+    MemoryRegion *lp_sram = g_new(MemoryRegion, 1);
+    memory_region_init_ram(lp_sram, NULL, "esp32c6.lp_sram", memmap[ESP32C6_MEMREGION_LP_SRAM].size, &error_fatal);
+    memory_region_add_subregion(sys_mem, memmap[ESP32C6_MEMREGION_LP_SRAM].base, lp_sram);
 
-    /* Initialize RTC Fast Memory as regular RAM */
-    MemoryRegion *rtcram = g_new(MemoryRegion, 1);
-    memory_region_init_ram(rtcram, NULL, "esp32c3.rtcram", memmap[ESP32C3_MEMREGION_RTCFAST].size, &error_fatal);
-    memory_region_add_subregion(sys_mem, memmap[ESP32C3_MEMREGION_RTCFAST].base, rtcram);
-
-    esp32c3_load_firmware(machine);
+    esp32c6_load_firmware(machine);
 
     qdev_realize(DEVICE(&ms->soc), NULL, &error_fatal);
 
-    memory_region_init_io(&ms->iomem, OBJECT(&ms->soc), &esp32c3_io_ops,
-                          NULL, "esp32c3.iomem", 0xd1000);
-    memory_region_add_subregion(sys_mem, ESP32C3_IO_START_ADDR, &ms->iomem);
-
+    memory_region_init_io(&ms->iomem, OBJECT(&ms->soc), &esp32c6_io_ops,
+                          NULL, "esp32c6.iomem", memmap[ESP32C6_MEMREGION_PERIPHERALS].size);
+    memory_region_add_subregion(sys_mem, memmap[ESP32C6_MEMREGION_PERIPHERALS].base, &ms->iomem);
 
     /* Initialize the peripheral bus */
     qbus_init(&ms->periph_bus, sizeof(ms->periph_bus),
-              TYPE_SYSTEM_BUS, DEVICE(&ms->soc), "esp32c3-periph-bus");
+              TYPE_SYSTEM_BUS, DEVICE(&ms->soc), "esp32c6-periph-bus");
 
     /* Initialize the main I/O of the CPU that waits for "reset" requests */
-    qdev_init_gpio_in_named(DEVICE(&ms->soc), esp32c3_reset_request, ESP32C6_RESET_GPIO_NAME, 1);
+    qdev_init_gpio_in_named(DEVICE(&ms->soc), esp32c6_reset_request, ESP32C6_RESET_GPIO_NAME, 1);
 
     /* Initialize the I/O peripherals */
-    for (int i = 0; i < ESP32C3_UART_COUNT; ++i) {
+    for (int i = 0; i < ESP32C6_UART_COUNT; ++i) {
         char name[16];
         snprintf(name, sizeof(name), "uart%d", i);
-        object_initialize_child(OBJECT(machine), name, &ms->uart[i], TYPE_ESP32C3_UART);
+        object_initialize_child(OBJECT(machine), name, &ms->uart[i], TYPE_ESP32C3_UART); // TODO using ESP32C3 UART
 
         snprintf(name, sizeof(name), "serial%d", i);
         object_property_add_alias(OBJECT(machine), name, OBJECT(&ms->uart[i]), "chardev");
         qdev_prop_set_chr(DEVICE(&ms->uart[i]), "chardev", serial_hd(i));
     }
 
+    // TODO using ESP32C3 everything
     object_initialize_child(OBJECT(machine), "intmatrix", &ms->intmatrix, TYPE_ESP32C3_INTMATRIX);
     object_initialize_child(OBJECT(machine), "gpio", &ms->gpio, TYPE_ESP32C3_GPIO);
-    object_initialize_child(OBJECT(machine), "extmem", &ms->cache, TYPE_ESP32C3_CACHE);
+    object_initialize_child(OBJECT(machine), "extmem", &ms->cache, TYPE_ESP32C3_CACHE); // TODO this has ESP32C3_DCACHE_BASE & ESP32C3_ICACHE_BASE, but the ESP32C6 has only one cache, so probably it has to be changed
     object_initialize_child(OBJECT(machine), "efuse", &ms->efuse, TYPE_ESP32C3_EFUSE);
     object_initialize_child(OBJECT(machine), "clock", &ms->clock, TYPE_ESP32C3_CLOCK);
     object_initialize_child(OBJECT(machine), "sha", &ms->sha, TYPE_ESP32C3_SHA);
@@ -418,7 +406,7 @@ static void esp32c3_machine_init(MachineState *machine)
     object_initialize_child(OBJECT(machine), "timg1", &ms->timg[1], TYPE_ESP32C3_TIMG);
     object_initialize_child(OBJECT(machine), "systimer", &ms->systimer, TYPE_ESP32C3_SYSTIMER);
     object_initialize_child(OBJECT(machine), "spi1", &ms->spi1, TYPE_ESP32C3_SPI);
-    object_initialize_child(OBJECT(machine), "rtccntl", &ms->rtccntl, TYPE_ESP32C3_RTC_CNTL);
+    object_initialize_child(OBJECT(machine), "rtccntl", &ms->rtccntl, TYPE_ESP32C3_RTC_CNTL); // TODO unsure about this
     object_initialize_child(OBJECT(machine), "jtag", &ms->jtag, TYPE_ESP32C3_JTAG);
     object_initialize_child(OBJECT(machine), "rgb", &ms->rgb, TYPE_ESP_RGB);
 
@@ -443,7 +431,7 @@ static void esp32c3_machine_init(MachineState *machine)
     }
 
     /* Initialize OpenCores Ethernet controller now sicne it requires the interrupt matrix */
-    esp32c3_init_openeth(ms);
+    esp32c6_init_openeth(ms);
 
     /* USB Serial JTAG realization */
     {
@@ -456,7 +444,7 @@ static void esp32c3_machine_init(MachineState *machine)
     {
         sysbus_realize(SYS_BUS_DEVICE(&ms->rtccntl), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->rtccntl), 0);
-        memory_region_add_subregion_overlap(sys_mem, DR_REG_RTCCNTL_BASE, mr, 0);
+        memory_region_add_subregion_overlap(sys_mem, DR_REG_LP_RTC_TIMER_BASE, mr, 0);
         /* Connect CNTL's reset-request GPIO to the SoC's reset GPIO */
         qdev_connect_gpio_out_named(DEVICE(&ms->rtccntl), ESP32C3_RTC_CPU_RESET_GPIO, 0,
                                     qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP32C6_RESET_GPIO_NAME, 0));
@@ -469,12 +457,12 @@ static void esp32c3_machine_init(MachineState *machine)
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->spi1), 0);
         memory_region_add_subregion_overlap(sys_mem, DR_REG_SPI1_BASE, mr, 0);
         if (blk) {
-            esp32c3_init_spi_flash(ms, blk);
+            esp32c6_init_spi_flash(ms, blk);
         }
     }
 
-    for (int i = 0; i < ESP32C3_UART_COUNT; ++i) {
-        const hwaddr uart_base[] = { DR_REG_UART_BASE, DR_REG_UART1_BASE };
+    for (int i = 0; i < ESP32C6_UART_COUNT; ++i) {
+        const hwaddr uart_base[] = { DR_REG_UART0_BASE, DR_REG_UART1_BASE };
         sysbus_realize(SYS_BUS_DEVICE(&ms->uart[i]), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->uart[i]), 0);
         memory_region_add_subregion_overlap(sys_mem, uart_base[i], mr, 0);
@@ -486,7 +474,7 @@ static void esp32c3_machine_init(MachineState *machine)
     {
         sysbus_realize(SYS_BUS_DEVICE(&ms->gpio), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->gpio), 0);
-        memory_region_add_subregion_overlap(sys_mem, DR_REG_GPIO_BASE, mr, 0);
+        memory_region_add_subregion_overlap(sys_mem, DR_REG_GPIO_MATRIX_BASE, mr, 0);
     }
 
     /* (Extmem) Cache realization */
@@ -499,7 +487,7 @@ static void esp32c3_machine_init(MachineState *machine)
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->cache), 0);
         memory_region_add_subregion_overlap(sys_mem, DR_REG_EXTMEM_BASE, mr, 0);
 
-        memory_region_add_subregion_overlap(sys_mem, ms->cache.dcache_base, &ms->cache.dcache, 0);
+        memory_region_add_subregion_overlap(sys_mem, ms->cache.dcache_base, &ms->cache.dcache, 0); // TODO same as above, two caches but only one in the ESP32C6
         memory_region_add_subregion_overlap(sys_mem, ms->cache.icache_base, &ms->cache.icache, 0);
     }
 
@@ -516,7 +504,7 @@ static void esp32c3_machine_init(MachineState *machine)
     {
         sysbus_realize(SYS_BUS_DEVICE(&ms->clock), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->clock), 0);
-        memory_region_add_subregion_overlap(sys_mem, DR_REG_SYSTEM_BASE, mr, 0);
+        memory_region_add_subregion_overlap(sys_mem, DR_REG_PCR_BASE, mr, 0);
         /* Connect the IRQ lines to the interrupt matrix */
         for (int i = 0; i < ESP32C3_SYSTEM_CPU_INTR_COUNT; i++) {
             sysbus_connect_irq(SYS_BUS_DEVICE(&ms->clock), i,
@@ -566,7 +554,7 @@ static void esp32c3_machine_init(MachineState *machine)
 
     /* GDMA Realization */
     {
-        object_property_set_link(OBJECT(&ms->gdma), "soc_mr", OBJECT(dram), &error_abort);
+        object_property_set_link(OBJECT(&ms->gdma), "soc_mr", OBJECT(hp_sram), &error_abort);
         sysbus_realize(SYS_BUS_DEVICE(&ms->gdma), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->gdma), 0);
         memory_region_add_subregion_overlap(sys_mem, DR_REG_GDMA_BASE, mr, 0);
@@ -640,42 +628,42 @@ static void esp32c3_machine_init(MachineState *machine)
     /* RGB display realization */
     {
         /* Give the internal RAM memory region to the display */
-        ms->rgb.intram = dram;
+        ms->rgb.intram = hp_sram;
         sysbus_realize(SYS_BUS_DEVICE(&ms->rgb), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->rgb), 0);
         memory_region_add_subregion_overlap(sys_mem, DR_REG_FRAMEBUF_BASE, mr, 0);
-        memory_region_add_subregion_overlap(sys_mem, esp32c3_memmap[ESP32C3_MEMREGION_FRAMEBUF].base, &ms->rgb.vram, 0);
+        memory_region_add_subregion_overlap(sys_mem, esp32c6_memmap[ESP32C6_MEMREGION_FRAMEBUF].base, &ms->rgb.vram, 0);
     }
 }
 
 
 /* Initialize machine type */
-static void esp32c3_machine_class_init(ObjectClass *oc, void *data)
+static void esp32c6_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
-    mc->desc = "Espressif ESP32-C3 machine";
+    mc->desc = "Espressif ESP32-C6 machine";
     mc->default_cpu_type = TYPE_ESP_RISCV_CPU;
-    mc->init = esp32c3_machine_init;
-    mc->max_cpus = 1;
-    mc->default_cpus = 1;
+    mc->init = esp32c6_machine_init;
+    mc->max_cpus = 1; // TODO actually 2?
+    mc->default_cpus = 1; // TODO actually 2?
     // 0x4f600
     mc->default_ram_size = 400 * 1024;
 }
 
 /* Create a new type of machine ("child class") */
-static const TypeInfo esp32c3_info = {
-    .name = TYPE_ESP32C3_MACHINE,
+static const TypeInfo esp32c6_info = {
+    .name = TYPE_ESP32C6_MACHINE,
     /* Specify the parent class, i.e. the class we derivate from */
     .parent = TYPE_MACHINE,
     /* Real size in bytes of our machine instance */
     .instance_size = sizeof(Esp32C6MachineState),
     /* Override the init function to one we defined above */
-    .class_init = esp32c3_machine_class_init,
+    .class_init = esp32c6_machine_class_init,
 };
 
-static void esp32c3_machine_type_init(void)
+static void esp32c6_machine_type_init(void)
 {
-    type_register_static(&esp32c3_info);
+    type_register_static(&esp32c6_info);
 }
 
-type_init(esp32c3_machine_type_init);
+type_init(esp32c6_machine_type_init);

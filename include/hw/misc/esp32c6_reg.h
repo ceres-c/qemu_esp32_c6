@@ -5,8 +5,8 @@
 #define DR_REG_UART0_BASE                       0x60000000
 #define DR_REG_UART1_BASE                       0x60001000
 #define DR_REG_AES_XTS_BASE                     0x60002000
-// #define DR_REG_SPI0_BASE                     0x60002000 // This was mapped here in an early
-// #define DR_REG_SPI1_BASE                     0x60003000 // version of the docs
+#define DR_REG_SPI0_BASE                        0x60002000 // This was mapped here in an early version of the docs, and
+#define DR_REG_SPI1_BASE                        0x60003000 // here https://docs.esp-rs.org/esp-hal/esp-hal/0.23.1/esp32c6/esp_hal/peripherals/
 // RESERVED                                     0x60003000
 #define DR_REG_I2C_EXT_BASE                     0x60004000
 #define DR_REG_UHCI0_BASE                       0x60005000
@@ -46,7 +46,7 @@
 #define DR_REG_MEM_MONITOR_BASE                 0x60092000
 // RESERVED										0x60094000
 #define DR_REG_HP_SYSREG_BASE                   0x60095000
-#define DR_REG_PCR_BASE                         0x60096000
+#define DR_REG_PCR_BASE                         0x60096000 /* Power/Clock/Reset register */
 // RESERVED										0x60097000
 #define DR_REG_TEE_BASE                         0x60098000
 #define DR_REG_HP_APM_BASE                      0x60099000
@@ -77,6 +77,7 @@
 #define DR_REG_INTPRI_BASE                      0x600c5000
 // RESERVED										0x600c6000
 #define DR_REG_EXTMEM_BASE                      0x600c8000
+#define DR_REG_EMAC_BASE                        0x600cd000
 
-#define ESP32C3_IO_START_ADDR                   (DR_REG_UART0_BASE)
-#define ESP32C3_UART_COUNT                      2
+#define ESP32C6_IO_START_ADDR                   (DR_REG_UART0_BASE)
+#define ESP32C6_UART_COUNT                      2
