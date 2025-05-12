@@ -22,8 +22,8 @@
 #include "hw/riscv/esp32c6_intmatrix.h"
 #include "esp_cpu.h"
 
-#define INTMATRIX_DEBUG     0
-#define INTMATRIX_WARNING   0
+#define INTMATRIX_DEBUG     1
+#define INTMATRIX_WARNING   1
 
 #define BIT_SET(reg, bit)   ((reg) & BIT(bit))
 #define CLEAR_BIT(reg, bit) do { (reg) &= ~BIT(bit); } while(0)
@@ -244,6 +244,26 @@ static uint64_t esp32c6_intmatrix_read(void* opaque, hwaddr addr, unsigned int s
     return r;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+static void esp32c6_intmatrix_read_prio(void* opaque, hwaddr addr, uint64_t value, unsigned int size) {
+    // TODO double check this, probably some other registers were moved to this table
+    ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
+    const uint32_t index = addr / sizeof(uint32_t);
+
+    if (index >= ESP32C6_INTMATRIX_IO_PRIO_START && index < ESP32C6_INTMATRIX_IO_PRIO_END) {
+        /* Interrupts start at 1, omit the first entry */
+        const uint32_t line = index - ESP32C6_INTMATRIX_IO_PRIO_START + 1;
+        s->irq_prio[line] = value & 0xf;
+    } else {
+#if INTMATRIX_WARNING
+        /* Other registers are not supported yet */
+        warn_report("[INTMATRIX] Unsupported read to %08lx\n", addr);
+#endif
+    }
+}
+#pragma GCC diagnostic pop
+
 static void esp32c6_intmatrix_write(void* opaque, hwaddr addr, uint64_t value, unsigned int size)
 {
     ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
@@ -325,6 +345,12 @@ static const MemoryRegionOps esp_intmatrix_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static const MemoryRegionOps esp_intmatrix_prio_ops = {
+    .read =  esp32c6_intmatrix_read,
+    .write = esp32c6_intmatrix_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
 
 static void esp32c6_intmatrix_reset_hold(Object *obj, ResetType type)
 {
@@ -368,7 +394,10 @@ static void esp32c6_intmatrix_init(Object *obj)
 
     memory_region_init_io(&s->iomem, obj, &esp_intmatrix_ops, s,
                           TYPE_ESP32C6_INTMATRIX, ESP32C6_INTMATRIX_IO_SIZE);
+    memory_region_init_io(&s->iomem_prio, obj, &esp_intmatrix_prio_ops, s,
+                          TYPE_ESP32C6_INTMATRIX_PRIO, ESP32C6_INTMATRIX_PRIO_IO_SIZE);
     sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_mmio(sbd, &s->iomem_prio);
 
     qdev_init_gpio_in(DEVICE(s), esp32c6_intmatrix_irq_handler, ESP32C6_INT_MATRIX_INPUTS);
     qdev_init_gpio_out_named(DEVICE(s), s->out_irqs, ESP32C6_INT_MATRIX_OUTPUT_NAME, ESP32C6_CPU_INT_COUNT + 1);

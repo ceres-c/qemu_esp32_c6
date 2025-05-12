@@ -19,9 +19,9 @@
 
 
 /**
- * Number of inputs in the C3's Interrupt Matrix
+ * Number of inputs in the C6's Interrupt Matrix
  */
-#define ESP32C6_INT_MATRIX_INPUTS   62
+#define ESP32C6_INT_MATRIX_INPUTS   77
 
 /**
  * Name of the output lines of the Interrupt Matrix (that shall be connected to the CPU)
@@ -32,23 +32,25 @@
  * Number of CPU peripheral interrupts on the C3.
  * This can be considered the output of the interrupt matrix.
  */
-#define ESP32C6_CPU_INT_COUNT       (ESP_CPU_INT_LINES)
+#define ESP32C6_CPU_INT_COUNT       28
 
 #define TYPE_ESP32C6_INTMATRIX "misc.esp32c6.intmatrix"
+#define TYPE_ESP32C6_INTMATRIX_PRIO "misc.esp32c6.intmatrix"
 #define ESP32C6_INTMATRIX(obj) OBJECT_CHECK(ESP32C6IntMatrixState, (obj), TYPE_ESP32C6_INTMATRIX)
 
 /**
  * Size of the I/O region, in bytes, of the C3 Interrupt Matrix
  */
 #define ESP32C6_INTMATRIX_IO_SIZE (0x800)
+#define ESP32C6_INTMATRIX_PRIO_IO_SIZE (0xA4)
 
 
 /**
  * Index where priority registers start
  */
-#define ESP32C6_INTMATRIX_IO_PRIO_START (0x118 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_PRIO_START (0x0c / sizeof(uint32_t))
 
-#define ESP32C6_INTMATRIX_IO_PRIO_END   (0x190 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_PRIO_END   (0x88 / sizeof(uint32_t))
 
 /**
  * The following registers are not part of any "register table", contrarily
@@ -62,17 +64,18 @@
 
 
 /* Bit value for the type of interrupt trigger  */
-#define ESP322C3_INTMATRIX_TRIG_LEVEL   0
-#define ESP322C3_INTMATRIX_TRIG_EDGE    1
+#define ESP322C6_INTMATRIX_TRIG_LEVEL   0
+#define ESP322C6_INTMATRIX_TRIG_EDGE    1
 
 typedef struct ESP32C6IntMatrixState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
+    MemoryRegion iomem_prio;
     uint8_t irq_map[ESP32C6_INT_MATRIX_INPUTS];
     /* In the following fields, "interrupts" refer to the CPU lines (31)
      * and not the peripheral source. */
-    /* ESP32-C3 CPU has 31 interrupts numbered from 1 to 31 */
+    /* ESP32-C6 CPU has 31 interrupts numbered from 0 to 31 */
     uint8_t irq_prio[ESP32C6_CPU_INT_COUNT + 1];
     /* Current priority threshold of the CPU interrupts */
     uint8_t irq_thres;
