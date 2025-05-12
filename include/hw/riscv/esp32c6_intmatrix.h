@@ -21,59 +21,59 @@
 /**
  * Number of inputs in the C3's Interrupt Matrix
  */
-#define ESP32C3_INT_MATRIX_INPUTS   62
+#define ESP32C6_INT_MATRIX_INPUTS   62
 
 /**
  * Name of the output lines of the Interrupt Matrix (that shall be connected to the CPU)
  */
-#define ESP32C3_INT_MATRIX_OUTPUT_NAME "misc.esp32c3.intmatrix.out_irqs"
+#define ESP32C6_INT_MATRIX_OUTPUT_NAME "misc.esp32c6.intmatrix.out_irqs"
 
 /**
  * Number of CPU peripheral interrupts on the C3.
  * This can be considered the output of the interrupt matrix.
  */
-#define ESP32C3_CPU_INT_COUNT       (ESP_CPU_INT_LINES)
+#define ESP32C6_CPU_INT_COUNT       (ESP_CPU_INT_LINES)
 
-#define TYPE_ESP32C3_INTMATRIX "misc.esp32c3.intmatrix"
-#define ESP32C3_INTMATRIX(obj) OBJECT_CHECK(ESP32C3IntMatrixState, (obj), TYPE_ESP32C3_INTMATRIX)
+#define TYPE_ESP32C6_INTMATRIX "misc.esp32c6.intmatrix"
+#define ESP32C6_INTMATRIX(obj) OBJECT_CHECK(ESP32C6IntMatrixState, (obj), TYPE_ESP32C6_INTMATRIX)
 
 /**
  * Size of the I/O region, in bytes, of the C3 Interrupt Matrix
  */
-#define ESP32C3_INTMATRIX_IO_SIZE (0x800)
+#define ESP32C6_INTMATRIX_IO_SIZE (0x800)
 
 
 /**
  * Index where priority registers start
  */
-#define ESP32C3_INTMATRIX_IO_PRIO_START (0x118 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_PRIO_START (0x118 / sizeof(uint32_t))
 
-#define ESP32C3_INTMATRIX_IO_PRIO_END   (0x190 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_PRIO_END   (0x190 / sizeof(uint32_t))
 
 /**
  * The following registers are not part of any "register table", contrarily
  * to the priorities or mapping.
  */
-#define ESP32C3_INTMATRIX_IO_ENABLE_REG (0x104 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_ENABLE_REG (0x104 / sizeof(uint32_t))
 
-#define ESP32C3_INTMATRIX_IO_TYPE_REG   (0x108 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_TYPE_REG   (0x108 / sizeof(uint32_t))
 
-#define ESP32C3_INTMATRIX_IO_THRESH_REG (0x194 / sizeof(uint32_t))
+#define ESP32C6_INTMATRIX_IO_THRESH_REG (0x194 / sizeof(uint32_t))
 
 
 /* Bit value for the type of interrupt trigger  */
 #define ESP322C3_INTMATRIX_TRIG_LEVEL   0
 #define ESP322C3_INTMATRIX_TRIG_EDGE    1
 
-typedef struct ESP32C3IntMatrixState {
+typedef struct ESP32C6IntMatrixState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
-    uint8_t irq_map[ESP32C3_INT_MATRIX_INPUTS];
+    uint8_t irq_map[ESP32C6_INT_MATRIX_INPUTS];
     /* In the following fields, "interrupts" refer to the CPU lines (31)
      * and not the peripheral source. */
     /* ESP32-C3 CPU has 31 interrupts numbered from 1 to 31 */
-    uint8_t irq_prio[ESP32C3_CPU_INT_COUNT + 1];
+    uint8_t irq_prio[ESP32C6_CPU_INT_COUNT + 1];
     /* Current priority threshold of the CPU interrupts */
     uint8_t irq_thres;
     /* Keep a bitmap of the pending interrupts */
@@ -88,10 +88,10 @@ typedef struct ESP32C3IntMatrixState {
     EspRISCVCPU *cpu;
 
     /* Output IRQ used to notify the CPU, indexed from 1 to 31, so allocate one more */
-    qemu_irq out_irqs[ESP32C3_CPU_INT_COUNT + 1];
-} ESP32C3IntMatrixState;
+    qemu_irq out_irqs[ESP32C6_CPU_INT_COUNT + 1];
+} ESP32C6IntMatrixState;
 
-_Static_assert(sizeof(uint64_t) * 8 >= ESP32C3_INT_MATRIX_INPUTS,
+_Static_assert(sizeof(uint64_t) * 8 >= ESP32C6_INT_MATRIX_INPUTS,
                "A single 64-bit value must be able to represent a bitmap of all the interrupt sources");
 
 typedef enum {
@@ -160,8 +160,8 @@ typedef enum {
     ETS_MAX_INTR_SOURCE,
 } periph_interrupt_t;
 
-_Static_assert(ESP32C3_INT_MATRIX_INPUTS == ETS_MAX_INTR_SOURCE,
-               "ESP32C3_INT_MATRIX_INPUTS macro doesn't match the number of interrupt sources");
+_Static_assert(ESP32C6_INT_MATRIX_INPUTS == ETS_MAX_INTR_SOURCE,
+               "ESP32C6_INT_MATRIX_INPUTS macro doesn't match the number of interrupt sources");
 
 /**
  * @brief Since wifi is not supported on ESP32-C3 target emulation, reuse its interrupt source for ethernet

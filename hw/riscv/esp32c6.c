@@ -69,7 +69,7 @@ struct Esp32C6MachineState {
     qemu_irq cpu_reset;
 
     DeviceState *eth; /* Ethernet controller */
-    ESP32C3IntMatrixState intmatrix;
+    ESP32C6IntMatrixState intmatrix;
     ESP32C3UARTState uart[ESP32C6_UART_COUNT];
     ESP32C3GPIOState gpio;
     ESP32C3CacheState cache;
@@ -390,7 +390,7 @@ static void esp32c6_machine_init(MachineState *machine)
     }
 
     // TODO using ESP32C3 everything
-    object_initialize_child(OBJECT(machine), "intmatrix", &ms->intmatrix, TYPE_ESP32C3_INTMATRIX);
+    object_initialize_child(OBJECT(machine), "intmatrix", &ms->intmatrix, TYPE_ESP32C6_INTMATRIX);
     object_initialize_child(OBJECT(machine), "gpio", &ms->gpio, TYPE_ESP32C3_GPIO);
     object_initialize_child(OBJECT(machine), "extmem", &ms->cache, TYPE_ESP32C3_CACHE); // TODO this has ESP32C3_DCACHE_BASE & ESP32C3_ICACHE_BASE, but the ESP32C6 has only one cache, so probably it has to be changed
     object_initialize_child(OBJECT(machine), "efuse", &ms->efuse, TYPE_ESP32C3_EFUSE);
@@ -424,9 +424,9 @@ static void esp32c6_machine_init(MachineState *machine)
         /* Connect all the interrupt matrix 31 output lines to the CPU 31 input IRQ lines.
          * The lines are indexed starting at 1.
          */
-        for (int i = 0; i <= ESP32C3_CPU_INT_COUNT; i++) {
+        for (int i = 0; i <= ESP32C6_CPU_INT_COUNT; i++) {
             qemu_irq cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, i);
-            qdev_connect_gpio_out_named(intmatrix_dev, ESP32C3_INT_MATRIX_OUTPUT_NAME, i, cpu_input);
+            qdev_connect_gpio_out_named(intmatrix_dev, ESP32C6_INT_MATRIX_OUTPUT_NAME, i, cpu_input);
         }
     }
 
