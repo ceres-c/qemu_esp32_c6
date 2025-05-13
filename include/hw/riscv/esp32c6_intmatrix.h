@@ -33,9 +33,10 @@
  * This can be considered the output of the interrupt matrix.
  */
 #define ESP32C6_CPU_INT_COUNT       28
+#define ESP32C6_CPU_INT_MAX         31
 
 #define TYPE_ESP32C6_INTMATRIX "misc.esp32c6.intmatrix"
-#define TYPE_ESP32C6_INTMATRIX_PRIO "misc.esp32c6.intmatrix"
+#define TYPE_ESP32C6_INTMATRIX_PRIO "misc.esp32c6.intmatrix-prio"
 #define ESP32C6_INTMATRIX(obj) OBJECT_CHECK(ESP32C6IntMatrixState, (obj), TYPE_ESP32C6_INTMATRIX)
 
 /**

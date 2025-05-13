@@ -418,14 +418,26 @@ static void esp32c6_machine_init(MachineState *machine)
         /* Store the current Machine CPU in the interrupt matrix */
         object_property_set_link(OBJECT(&ms->intmatrix), "cpu", OBJECT(&ms->soc), &error_abort);
         sysbus_realize(SYS_BUS_DEVICE(&ms->intmatrix), &error_fatal);
-        MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->intmatrix), 0);
-        memory_region_add_subregion_overlap(sys_mem, DR_REG_INTERRUPT_BASE, mr, 0);
+        MemoryRegion *mr_int = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->intmatrix), 0);
+        memory_region_add_subregion_overlap(sys_mem, DR_REG_INTERRUPT_BASE, mr_int, 0);
+        MemoryRegion *mr_int_prio = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ms->intmatrix), 1);
+        memory_region_add_subregion_overlap(sys_mem, DR_REG_INTPRI_BASE, mr_int_prio, 1); // Higher priority, just in case
 
-        /* Connect all the interrupt matrix 31 output lines to the CPU 31 input IRQ lines.
-         * The lines are indexed starting at 1.
+
+        /* Connect all the interrupt matrix 28 output lines to the CPU 28 input IRQ lines.
+         * See Figure 10.1
          */
-        for (int i = 0; i <= ESP32C6_CPU_INT_COUNT; i++) {
-            qemu_irq cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, i);
+        qemu_irq cpu_input;
+        cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, 1);
+        qdev_connect_gpio_out_named(intmatrix_dev, ESP32C6_INT_MATRIX_OUTPUT_NAME, 1, cpu_input);
+        cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, 2);
+        qdev_connect_gpio_out_named(intmatrix_dev, ESP32C6_INT_MATRIX_OUTPUT_NAME, 2, cpu_input);
+        cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, 5);
+        qdev_connect_gpio_out_named(intmatrix_dev, ESP32C6_INT_MATRIX_OUTPUT_NAME, 5, cpu_input);
+        cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, 6);
+        qdev_connect_gpio_out_named(intmatrix_dev, ESP32C6_INT_MATRIX_OUTPUT_NAME, 6, cpu_input);
+        for (int i = 8; i <= ESP32C6_CPU_INT_MAX; i++) {
+            cpu_input = qdev_get_gpio_in_named(DEVICE(&ms->soc), ESP_CPU_IRQ_LINES_NAME, i);
             qdev_connect_gpio_out_named(intmatrix_dev, ESP32C6_INT_MATRIX_OUTPUT_NAME, i, cpu_input);
         }
     }

@@ -22,7 +22,7 @@
 #include "hw/riscv/esp32c6_intmatrix.h"
 #include "esp_cpu.h"
 
-#define INTMATRIX_DEBUG     1
+#define INTMATRIX_DEBUG     1 // TODO disable
 #define INTMATRIX_WARNING   1
 
 #define BIT_SET(reg, bit)   ((reg) & BIT(bit))
@@ -246,7 +246,7 @@ static uint64_t esp32c6_intmatrix_read(void* opaque, hwaddr addr, unsigned int s
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
-static void esp32c6_intmatrix_read_prio(void* opaque, hwaddr addr, uint64_t value, unsigned int size) {
+static void esp32c6_intmatrix_prio_read(void* opaque, hwaddr addr, uint64_t value, unsigned int size) {
     // TODO double check this, probably some other registers were moved to this table
     ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
     const uint32_t index = addr / sizeof(uint32_t);
@@ -346,7 +346,7 @@ static const MemoryRegionOps esp_intmatrix_ops = {
 };
 
 static const MemoryRegionOps esp_intmatrix_prio_ops = {
-    .read =  esp32c6_intmatrix_read,
+    .read =  esp32c6_intmatrix_prio_read,
     .write = esp32c6_intmatrix_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
