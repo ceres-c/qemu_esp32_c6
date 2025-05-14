@@ -66,6 +66,9 @@ typedef struct EspRISCVCPU {
     EspIntEnableCallback mie_enabled_callback;
     void* mie_enabled_opaque;
 
+    /* Should we add a 'uie_enabled_callback and uie_enabled_opaque as well?*/
+
+
     /*< public >*/
     /* The parent object already has a reset vector property */
     uint32_t hartid_base;
