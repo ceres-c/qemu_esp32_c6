@@ -520,7 +520,7 @@ static void esp32c6_machine_init(MachineState *machine)
         /* Connect the IRQ lines to the interrupt matrix */
         for (int i = 0; i < ESP32C3_SYSTEM_CPU_INTR_COUNT; i++) {
             sysbus_connect_irq(SYS_BUS_DEVICE(&ms->clock), i,
-                           qdev_get_gpio_in(intmatrix_dev, ETS_FROM_CPU_INTR0_SOURCE + i));
+                           qdev_get_gpio_in(intmatrix_dev, ETS_CPU_INTR_FROM_CPU_0_INTR_SOURCE + i));
         }
     }
 
@@ -531,10 +531,11 @@ static void esp32c6_machine_init(MachineState *machine)
         memory_region_add_subregion_overlap(sys_mem, DR_REG_TIMERGROUP0_BASE, mr, 0);
         /* Connect the T0 interrupt line to the interrupt matrix */
         qdev_connect_gpio_out_named(DEVICE(&ms->timg[0]), ESP32C3_T0_IRQ_INTERRUPT, 0,
-                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG0_T0_LEVEL_INTR_SOURCE));
+                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG0_T0_INTR_SOURCE));
+        // TODO timer group 1 too
         /* Connect the Watchdog interrupt line to the interrupt matrix */
         qdev_connect_gpio_out_named(DEVICE(&ms->timg[0]), ESP32C3_WDT_IRQ_INTERRUPT, 0,
-                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG0_WDT_LEVEL_INTR_SOURCE));
+                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG0_WDT_INTR_SOURCE));
         /* Connect the Watchdog reset request to the CNTL's WDT0 line */
         qdev_connect_gpio_out_named(DEVICE(&ms->timg[0]), ESP32C3_WDT_IRQ_RESET, 0,
                                     qdev_get_gpio_in(DEVICE(&ms->rtccntl), ESP32C3_TG0WDT_SYS_RESET));
@@ -546,9 +547,9 @@ static void esp32c6_machine_init(MachineState *machine)
         memory_region_add_subregion_overlap(sys_mem, DR_REG_TIMERGROUP1_BASE, mr, 0);
         /* Connect the T0 interrupt line to the interrupt matrix */
         qdev_connect_gpio_out_named(DEVICE(&ms->timg[1]), ESP32C3_T0_IRQ_INTERRUPT, 0,
-                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG1_T0_LEVEL_INTR_SOURCE));
+                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG1_T0_INTR_SOURCE));
         qdev_connect_gpio_out_named(DEVICE(&ms->timg[1]), ESP32C3_WDT_IRQ_INTERRUPT, 0,
-                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG1_WDT_LEVEL_INTR_SOURCE));
+                                    qdev_get_gpio_in(intmatrix_dev, ETS_TG1_WDT_INTR_SOURCE));
         qdev_connect_gpio_out_named(DEVICE(&ms->timg[1]), ESP32C3_WDT_IRQ_RESET, 0,
                                     qdev_get_gpio_in(DEVICE(&ms->rtccntl), ESP32C3_TG1WDT_SYS_RESET));
     }
@@ -560,7 +561,7 @@ static void esp32c6_machine_init(MachineState *machine)
         memory_region_add_subregion_overlap(sys_mem, DR_REG_SYSTIMER_BASE, mr, 0);
         for (int i = 0; i < ESP_SYSTIMER_IRQ_COUNT; i++) {
             sysbus_connect_irq(SYS_BUS_DEVICE(&ms->systimer), i,
-                           qdev_get_gpio_in(intmatrix_dev, ETS_SYSTIMER_TARGET0_EDGE_INTR_SOURCE + i));
+                           qdev_get_gpio_in(intmatrix_dev, ETS_SYSTIMER_TARGET0_INTR_SOURCE + i));
         }
     }
 
@@ -573,9 +574,9 @@ static void esp32c6_machine_init(MachineState *machine)
         /* On the ESP32-C3, both IN and OUT channels are connected to the same Connect the IRQs to the Interrupt Matrix */
         for (int i = 0; i < ESP32C3_GDMA_CHANNEL_COUNT; i++) {
             qdev_connect_gpio_out_named(DEVICE(&ms->gdma), ESP_GDMA_IRQ_IN_NAME, i,
-                                        qdev_get_gpio_in(intmatrix_dev, ETS_DMA_CH0_INTR_SOURCE + i));
+                                        qdev_get_gpio_in(intmatrix_dev, ETS_GDMA_IN_CH0_INTR_SOURCE + i));
             qdev_connect_gpio_out_named(DEVICE(&ms->gdma), ESP_GDMA_IRQ_OUT_NAME, i,
-                                        qdev_get_gpio_in(intmatrix_dev, ETS_DMA_CH0_INTR_SOURCE + i));
+                                        qdev_get_gpio_in(intmatrix_dev, ETS_GDMA_IN_CH0_INTR_SOURCE + i));
         }
 
     }

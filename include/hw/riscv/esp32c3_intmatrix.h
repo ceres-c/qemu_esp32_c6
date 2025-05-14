@@ -79,8 +79,6 @@ typedef struct ESP32C3IntMatrixState {
     uint64_t irq_pending;
     /* Bitmap that records the enabled/disabled interrupts */
     uint64_t irq_enabled;
-    /* Bitmap that records the type of trigger for interrupts */
-    uint64_t irq_trigger;
 
     /* Fast mirror to access IRQ levels */
     uint64_t irq_levels;

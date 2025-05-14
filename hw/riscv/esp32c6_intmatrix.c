@@ -224,9 +224,38 @@ static uint64_t esp32c6_intmatrix_read(void* opaque, hwaddr addr, unsigned int s
 
     if (index < ESP32C6_INT_MATRIX_INPUTS) {
         r = s->irq_map[index];
-    } else if (index >= ESP32C6_INTMATRIX_IO_PRIO_START && index < ESP32C6_INTMATRIX_IO_PRIO_END) {
+    } else if (index == ESP32C6_INTMTX_CORE0_INT_STATUS_0_REG) {
+        warn_report("[INTMATRIX] Unsupported read to ESP32C6_INTMTX_CORE0_INT_STATUS_0_REG\n");
+        r = 0;
+    } else if (index == ESP32C6_INTMTX_CORE0_INT_STATUS_1_REG) {
+        warn_report("[INTMATRIX] Unsupported read to ESP32C6_INTMTX_CORE0_INT_STATUS_1_REG\n");
+        r = 0;
+    } else if (index == ESP32C6_INTMTX_CORE0_INT_STATUS_2_REG) {
+        warn_report("[INTMATRIX] Unsupported read to ESP32C6_INTMTX_CORE0_INT_STATUS_2_REG\n");
+        r = 0;
+    } else if (index == ESP32C6_INTMTX_CORE0_INTERRUPT_REG_DATE_REG) {
+        r = 0x22031100;
+    } else {
+#if INTMATRIX_WARNING
+        /* Other registers are not supported yet */
+        warn_report("[INTMATRIX] Unsupported read to %08lx\n", addr);
+#endif
+    }
+
+    return r;
+}
+
+static uint64_t esp32c6_intmatrix_prio_read(void* opaque, hwaddr addr, unsigned int size)
+{
+    ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
+    const uint32_t index = addr / sizeof(uint32_t);
+    uint32_t r = 0;
+
+    if (index < ESP32C6_INT_MATRIX_INPUTS) {
+        r = s->irq_map[index];
+    } else if (index >= ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_START && index < ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_END) {
         /* Interrupts start at 1, omit the first entry */
-        const uint32_t line = index - ESP32C6_INTMATRIX_IO_PRIO_START + 1;
+        const uint32_t line = index - ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_START + 1;
         r = s->irq_prio[line];
     } else if (index == ESP32C6_INTMATRIX_IO_THRESH_REG) {
         r = s->irq_thres;
@@ -244,26 +273,6 @@ static uint64_t esp32c6_intmatrix_read(void* opaque, hwaddr addr, unsigned int s
     return r;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-static void esp32c6_intmatrix_prio_read(void* opaque, hwaddr addr, uint64_t value, unsigned int size) {
-    // TODO double check this, probably some other registers were moved to this table
-    ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
-    const uint32_t index = addr / sizeof(uint32_t);
-
-    if (index >= ESP32C6_INTMATRIX_IO_PRIO_START && index < ESP32C6_INTMATRIX_IO_PRIO_END) {
-        /* Interrupts start at 1, omit the first entry */
-        const uint32_t line = index - ESP32C6_INTMATRIX_IO_PRIO_START + 1;
-        s->irq_prio[line] = value & 0xf;
-    } else {
-#if INTMATRIX_WARNING
-        /* Other registers are not supported yet */
-        warn_report("[INTMATRIX] Unsupported read to %08lx\n", addr);
-#endif
-    }
-}
-#pragma GCC diagnostic pop
-
 static void esp32c6_intmatrix_write(void* opaque, hwaddr addr, uint64_t value, unsigned int size)
 {
     ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
@@ -277,64 +286,36 @@ static void esp32c6_intmatrix_write(void* opaque, hwaddr addr, uint64_t value, u
         info_report("\x1b[31m[INTMATRIX] Mapping interrupt %d to CPU line %d\x1b[0m\n", index, s->irq_map[index]);
 #endif
 
-    } else if (index >= ESP32C6_INTMATRIX_IO_PRIO_START && index < ESP32C6_INTMATRIX_IO_PRIO_END) {
 
-        const uint8_t priority = value & 0xf;
-        const uint32_t line = (index - ESP32C6_INTMATRIX_IO_PRIO_START) + 1;
-        s->irq_prio[line] = priority;
-#if INTMATRIX_DEBUG
-        info_report("\x1b[31m[INTMATRIX] Priority of line %d set to %d\x1b[0m\n", line, priority);
-#endif
-        /* Check if the new priority interrupts the CPU */
-        esp32c6_intmatrix_irq_prio_changed(s, line, priority);
-
-    } else if (index == ESP32C6_INTMATRIX_IO_THRESH_REG) {
-
-        const uint8_t priority = value & 0xf;
-
-        /**
-         * If the new priority is the same as the former one, nothing must be done.
-         * Else, this could result in an infinite loop. Let's say we have an interrupt source
-         * that is mapped to a CPU line, its threshold is 2, the CPU threshold is 3.
-         * When the interrupt source is asserted, no interrupt is triggered, because the line's
-         * priority is lower than the threshold but the its pending bit is set .
-         * As soon as the threshold is lowered to 2 or 1, the interrupt will be triggered because
-         * its pending bit is set.
-         * NOTE THAT THE PENDING BIT IS STILL SET BECAUSE THE SOURCE IS STILL ASSERTED!
-         * As such, if the CPU sets the threshold to the same value, the function
-         * `esp32c6_intmatrix_core_prio_changed` called below would re-schedule the same interrupt.
-         */
-        if (priority != s->irq_thres) {
-            s->irq_thres = priority;
-#if INTMATRIX_DEBUG
-            info_report("\x1b[31m[INTMATRIX] Setting CPU IRQ threshold to %d\x1b[0m", priority);
-#endif
-            esp32c6_intmatrix_core_prio_changed(s, priority);
-        }
-
-    } else if (index == ESP32C6_INTMATRIX_IO_ENABLE_REG) {
-        /* Check if any bit has changed status */
-        uint64_t prev = s->irq_enabled;
-        s->irq_enabled = value;
-        /* Check which interrupt/bit changed
-         * Interrupts starts at 1, so we need to count up to ESP32C6_CPU_INT_COUNT */
-        for (int i = 0; i <= ESP32C6_CPU_INT_COUNT; i++) {
-            const int new_st = value & BIT(i);
-            const int old_st = prev  & BIT(i);
-            if (new_st != old_st) {
-                esp32c6_intmatrix_irq_status_changed(s, i, new_st ? 1 : 0);
-            }
-        }
-    } else if (index == ESP32C6_INTMATRIX_IO_TYPE_REG) {
-        if (value != 0) {
-#if INTMATRIX_WARNING
-            warn_report("[INTMATRIX] Edge-triggered interrupts not supported\n");
-#endif
-        }
+    } else if (index == ESP32C6_INTMTX_CORE0_INT_STATUS_0_REG) {
+        warn_report("[INTMATRIX] Unsupported write to ESP32C6_INTMTX_CORE0_INT_STATUS_0_REG\n");
+    } else if (index == ESP32C6_INTMTX_CORE0_INT_STATUS_1_REG) {
+        warn_report("[INTMATRIX] Unsupported write to ESP32C6_INTMTX_CORE0_INT_STATUS_1_REG\n");
+    } else if (index == ESP32C6_INTMTX_CORE0_INT_STATUS_2_REG) {
+        warn_report("[INTMATRIX] Unsupported write to ESP32C6_INTMTX_CORE0_INT_STATUS_2_REG\n");
+    } else if (index == ESP32C6_INTMTX_CORE0_INTERRUPT_REG_DATE_REG) {
+        warn_report("[INTMATRIX] Unsupported write to ESP32C6_INTMTX_CORE0_INTERRUPT_REG_DATE_REG\n");
     } else {
 #if INTMATRIX_WARNING
         /* Other registers are not supported yet */
         warn_report("[INTMATRIX] Unsupported write to %08lx (%08lx)\n", addr, value);
+#endif
+    }
+}
+
+static void esp32c6_intmatrix_prio_write(void* opaque, hwaddr addr, uint64_t value, unsigned int size) {
+    // TODO double check this, probably some other registers were moved to this table
+    ESP32C6IntMatrixState *s = ESP32C6_INTMATRIX(opaque);
+    const uint32_t index = addr / sizeof(uint32_t);
+
+    if (index >= ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_START && index < ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_END) {
+        /* Interrupts start at 1, omit the first entry */
+        const uint32_t line = index - ESP32C6_INTMATRIX_IO_PRIO_START + 1;
+        s->irq_prio[line] = value & 0xf;
+    } else {
+#if INTMATRIX_WARNING
+        /* Other registers are not supported yet */
+        warn_report("[INTMATRIX] Unsupported read to %08lx\n", addr);
 #endif
     }
 }
@@ -347,7 +328,7 @@ static const MemoryRegionOps esp_intmatrix_ops = {
 
 static const MemoryRegionOps esp_intmatrix_prio_ops = {
     .read =  esp32c6_intmatrix_prio_read,
-    .write = esp32c6_intmatrix_write,
+    .write = esp32c6_intmatrix_prio_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
@@ -362,7 +343,6 @@ static void esp32c6_intmatrix_reset_hold(Object *obj, ResetType type)
     s->irq_thres = 0;
     s->irq_pending = 0;
     s->irq_levels = 0;
-    s->irq_trigger = 0;
     s->irq_enabled = 0;
     for (int i = 0; i <= ESP32C6_CPU_INT_COUNT; i++) {
         qemu_irq_lower(s->out_irqs[i]);

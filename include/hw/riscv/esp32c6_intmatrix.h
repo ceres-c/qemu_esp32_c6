@@ -39,29 +39,43 @@
 #define TYPE_ESP32C6_INTMATRIX_PRIO "misc.esp32c6.intmatrix-prio"
 #define ESP32C6_INTMATRIX(obj) OBJECT_CHECK(ESP32C6IntMatrixState, (obj), TYPE_ESP32C6_INTMATRIX)
 
+/******************************
+ * Interrupt Matrix Registers *
+ ******************************/
 /**
  * Size of the I/O region, in bytes, of the C3 Interrupt Matrix
  */
 #define ESP32C6_INTMATRIX_IO_SIZE (0x800)
 #define ESP32C6_INTMATRIX_PRIO_IO_SIZE (0xA4)
 
+/**
+ * Index of the other interrupt matrix registers
+ */
+#define ESP32C6_INTMTX_CORE0_INT_STATUS_0_REG (0x0134 / sizeof(uint32_t))
+#define ESP32C6_INTMTX_CORE0_INT_STATUS_1_REG (0x0138 / sizeof(uint32_t))
+#define ESP32C6_INTMTX_CORE0_INT_STATUS_2_REG (0x013C / sizeof(uint32_t))
+#define ESP32C6_INTMTX_CORE0_INTERRUPT_REG_DATE_REG (0x07FC / sizeof(uint32_t))
+
+
+/***************************************
+ * Interrupt Priority Matrix Registers *
+ ***************************************/
+#define ESP32C6_INTPRI_CORE0_CPU_INT_ENABLE_REG (0x000 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CORE0_CPU_INT_TYPE_REG   (0x004 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CORE0_CPU_INT_EIP_STATUS_REG (0x008 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CORE0_CPU_INT_THRESH_REG (0x08C / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CORE0_CPU_INT_CLEAR_REG  (0x0A8 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CPU_INTR_FROM_CPU_1_REG  (0x090 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CPU_INTR_FROM_CPU_2_REG  (0x094 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CPU_INTR_FROM_CPU_3_REG  (0x098 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CPU_INTR_FROM_CPU_4_REG  (0x09C / sizeof(uint32_t))
+#define ESP32C6_INTPRI_DATE_REG                 (0x0A0 / sizeof(uint32_t))
 
 /**
  * Index where priority registers start
  */
-#define ESP32C6_INTMATRIX_IO_PRIO_START (0x0c / sizeof(uint32_t))
-
-#define ESP32C6_INTMATRIX_IO_PRIO_END   (0x88 / sizeof(uint32_t))
-
-/**
- * The following registers are not part of any "register table", contrarily
- * to the priorities or mapping.
- */
-#define ESP32C6_INTMATRIX_IO_ENABLE_REG (0x104 / sizeof(uint32_t))
-
-#define ESP32C6_INTMATRIX_IO_TYPE_REG   (0x108 / sizeof(uint32_t))
-
-#define ESP32C6_INTMATRIX_IO_THRESH_REG (0x194 / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_START (0x00c / sizeof(uint32_t))
+#define ESP32C6_INTPRI_CORE0_CPU_INT_PRIO_END   (0x088 / sizeof(uint32_t))
 
 
 /* Bit value for the type of interrupt trigger  */
@@ -84,8 +98,6 @@ typedef struct ESP32C6IntMatrixState {
     uint64_t irq_pending;
     /* Bitmap that records the enabled/disabled interrupts */
     uint64_t irq_enabled;
-    /* Bitmap that records the type of trigger for interrupts */
-    uint64_t irq_trigger;
 
     /* Fast mirror to access IRQ levels */
     uint64_t irq_levels;
@@ -94,9 +106,6 @@ typedef struct ESP32C6IntMatrixState {
     /* Output IRQ used to notify the CPU, indexed from 1 to 31, so allocate one more */
     qemu_irq out_irqs[ESP32C6_CPU_INT_COUNT + 1];
 } ESP32C6IntMatrixState;
-
-_Static_assert(sizeof(uint64_t) * 8 >= ESP32C6_INT_MATRIX_INPUTS,
-               "A single 64-bit value must be able to represent a bitmap of all the interrupt sources");
 
 typedef enum {
     ETS_RESERVED0_INTR_SOURCE = 0,
@@ -176,12 +185,13 @@ typedef enum {
     ETS_SHA_INTR_SOURCE,
     ETS_RSA_INTR_SOURCE,
     ETS_ECC_INTR_SOURCE,
+    ETS_MAX_INTR_SOURCE,                        /**< number of interrupt sources */
 } periph_interrupt_t;
 
 _Static_assert(ESP32C6_INT_MATRIX_INPUTS == ETS_MAX_INTR_SOURCE,
-               "ESP32C6_INT_MATRIX_INPUTS macro doesn't match the number of interrupt sources");
+               "ESP32C6_INT_MATRIX_INPUTS macroETS_MAX_INTR_SOURCE doesn't match the number of interrupt sources");
 
 /**
- * @brief Since wifi is not supported on ESP32-C3 target emulation, reuse its interrupt source for ethernet
+ * @brief Since wifi is not supported on ESP32-C6 target emulation, reuse the first interrupt source for ethernet
  */
-#define ETS_ETH_MAC_INTR_SOURCE     ETS_WIFI_MAC_INTR_SOURCE
+#define ETS_ETH_MAC_INTR_SOURCE     ETS_RESERVED0_INTR_SOURCE

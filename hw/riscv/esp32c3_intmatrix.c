@@ -336,7 +336,6 @@ static void esp32c3_intmatrix_reset_hold(Object *obj, ResetType type)
     s->irq_thres = 0;
     s->irq_pending = 0;
     s->irq_levels = 0;
-    s->irq_trigger = 0;
     s->irq_enabled = 0;
     for (int i = 0; i <= ESP32C3_CPU_INT_COUNT; i++) {
         qemu_irq_lower(s->out_irqs[i]);
